@@ -6,27 +6,30 @@ upper = 4  # EDIT
 lower = 0.1  # EDIT
 digits = [1, 10, 100, 1000, 10000, 100000]  # DO NOT EDIT
 
-# EDIT minimum USD for buy with min_size at upper (you can input > min)
-min_usd = 4
+min_usd = 4  # EDIT -> minimum USD for buy with min_size at upper
 min_trade_size = 1  # EDIT
-min_trade_size_decimal = 0  # EDIT INPUT DECIMAL OF MIN SIZE
+min_trade_size_decimal = 0  # EDIT -> number of size decimal places
 
-# check if priceIncrement not is 0.xxx1, 0.x1, 1, you must round price number
-price_decimal = 4
+# check if priceIncrement not is 0.xxx1, 0.x1, 1, you must round asset price
+price_decimal = 4  # EDIT -> number of price decimal places
 
 gap_entry = 8  # EDIT %
 gap_tp = 9  # EDIT %
 maker_fee = 0.02  # EDIT %
 
-
-def create_zone():
+def get_csv_column():
     column = ['no', 'entry', 'tp',
               'recommended_amount', 'sum_actual_amount', 'sum_recommended_amount', 'usd_value', 'sum_usd', 'usd_for_collectzone', 'tp_status', 'order_buy_id', 'order_buy_datetime', 'order_sell_id', 'order_sell_datetime']
-    trading_strategy = pd.DataFrame(columns=column)
+    return column
+
+
+def create_zone():
+    fieldnames = get_csv_column()
+    trading_strategy = pd.DataFrame(columns=fieldnames)
     trading_strategy.to_csv("trading_strategy.csv", index=False)
 
     data = []
-    data.append(column)
+    data.append(fieldnames)
 
     sum_usd = 0
     sum_amount = 0
@@ -56,11 +59,11 @@ def create_zone():
             usd_collect_zone = entry_price * sum_amount_collect
 
             item = []
-            item.append(count_zone)  # EDIT
+            item.append(count_zone)
             item.append("{:.{precision}f}".format(
-                entry_price, precision=price_decimal))  # EDIT
+                entry_price, precision=price_decimal))
             item.append("{:.{precision}f}".format(
-                tp_price, precision=price_decimal))  # EDIT
+                tp_price, precision=price_decimal))
 
             item.append("{:.8f}".format(recommended_amount))
             item.append("{:.8f}".format(sum_amount))

@@ -1,6 +1,7 @@
 ### JUST FOR LEARNING PURPOSE USE AT YOUR OWN RISK !!!!! ####
 
 # import neccessary package
+from re import T
 import ccxt
 import json
 import pandas as pd
@@ -10,16 +11,19 @@ import decimal
 from datetime import datetime
 import pytz
 import csv
+from collections import defaultdict, deque
 
 import websocket
 import _thread
 import hmac
 
+from colorama import init, Fore, Back, Style
+init(autoreset=True)
+
 # Api and secret
 api_key = "8eoZURlwL28c7T96cl2qzTT2HMjFZ2gl_jahaJGq"
 api_secret = "j7i-8jNXGHG5s7jq_GxC2fMLARERmhigi0aiCgys"
 subaccount = "AAVE_GT"
-# Set your account name (ตั้งชื่อ Account ที่ต้องการให้แสดงผล)
 
 # Exchange Details
 exchange = ccxt.ftx({
@@ -28,26 +32,22 @@ exchange = ccxt.ftx({
     'enableRateLimit': True}
 )
 exchange.headers = {'FTX-SUBACCOUNT': subaccount}
-# Maker or Taker (วางโพซิชั่นเป็น MAKER เท่านั้นหรือไม่ True = ใช่)
-post_only = True
 
-# Name of Rebalancing Token (ใส่ชื่อเหรียญที่ต้องการ Rebalance)
-token_name_lst = ["ALPHA"]
-# Rebalancing Pair (ใส่ชื่อคู่ที่ต้องการ Rebalance เช่น XRP จะเป็น XRP/USD)
-pair_lst = ["ALPHA/USD"]
-fix_value_lst = [0]  # ไม่ต้องแก้อะไร
+post_only = True # Maker or Taker (post_only = True = Maker only)
+asset_name = 'ALPHA'
+pair = "ALPHA/USD"
 
+timeframe = '15m'
 upper = 4  # EDIT
 lower = 0.1  # EDIT
 digits = [1, 10, 100, 1000, 10000, 100000]  # DO NOT EDIT
 
-# EDIT minimum USD for buy with min_size at upper (you can input > min)
-min_usd = 4
+min_usd = 4  # EDIT -> minimum USD for buy with min_size at upper
 min_trade_size = 1  # EDIT
-min_trade_size_decimal = 0  # EDIT INPUT DECIMAL OF MIN SIZE
+min_trade_size_decimal = 0  # EDIT -> number of size decimal places
 
-# check if priceIncrement not is 0.xxx1, 0.x1, 1, you must round price number
-price_decimal = 4
+# check if priceIncrement not is 0.xxx1, 0.x1, 1, you must round asset price
+price_decimal = 4  # EDIT -> number of price decimal places
 
 gap_entry = 8  # EDIT %
 gap_tp = 9  # EDIT %
@@ -56,21 +56,11 @@ maker_fee = 0.02  # EDIT %
 # Fix Value Setting
 # capital = 100
 
-# List to Dict Setting
-token_fix_value = {token_name_lst[i]: fix_value_lst[i]
-                   for i in range(len(token_name_lst))}
-pair_dict = {token_name_lst[i]: pair_lst[i]
-             for i in range(len(token_name_lst))}
-
-last_price = None
 open_range = 30  # percent
-is_connect = False
-handling_ws = False
-handling_main = False
+
+loop_time = 60
 
 ### Function Part ###
-
-
 def print_underline():
     print("-------------------------------------------")
 
@@ -130,15 +120,11 @@ def get_cash():
     return cash
 
 
-def get_last_trade_price(pair):
-    pair = pair
-    trade_history = pd.DataFrame(exchange.fetchMyTrades(pair, limit=1),
-                                 columns=['id', 'timestamp', 'datetime', 'symbol', 'side', 'price', 'amount', 'cost', 'fee'])
-    last_trade_price = trade_history['price']
-
-    return float(last_trade_price)
-
 # Database Function Part
+def get_csv_column():
+    column = ['no', 'entry', 'tp',
+              'recommended_amount', 'sum_actual_amount', 'sum_recommended_amount', 'usd_value', 'sum_usd', 'usd_for_collectzone', 'tp_status', 'order_buy_id', 'order_buy_datetime', 'order_sell_id', 'order_sell_datetime']
+    return column
 
 
 def check_database():
@@ -149,13 +135,12 @@ def check_database():
         print('DataBase Exist Loading DataBase....')
     except:
         print('Creating DataBase....')
-        column = ['no', 'entry', 'tp',
-                  'recommended_amount', 'sum_actual_amount', 'sum_recommended_amount', 'usd_value', 'sum_usd', 'usd_for_collectzone', 'tp_status', 'order_buy_id', 'order_buy_datetime', 'order_sell_id', 'order_sell_datetime']
-        trading_strategy = pd.DataFrame(columns=column)
+        fieldnames = get_csv_column()
+        trading_strategy = pd.DataFrame(columns=fieldnames)
         trading_strategy.to_csv("trading_strategy.csv", index=False)
 
         data = []
-        data.append(column)
+        data.append(get_csv_column())
 
         sum_usd = 0
         sum_amount = 0
@@ -185,11 +170,11 @@ def check_database():
                 usd_collect_zone = entry_price * sum_amount_collect
 
                 item = []
-                item.append(count_zone)  # EDIT
+                item.append(count_zone)
                 item.append("{:.{precision}f}".format(
-                    entry_price, precision=price_decimal))  # EDIT
+                    entry_price, precision=price_decimal))
                 item.append("{:.{precision}f}".format(
-                    tp_price, precision=price_decimal))  # EDIT
+                    tp_price, precision=price_decimal))
 
                 item.append("{:.8f}".format(recommended_amount))
                 item.append("{:.8f}".format(sum_amount))
@@ -223,7 +208,16 @@ check_database()
 
 
 def identify_trend():
-    return 'UPTREND'
+    return 'Uptrend'
+
+
+def print_trend():
+    trend_color = None
+    if trend == 'Uptrend':
+        trend_color = Fore.GREEN
+    else:
+        trend_color = Fore.RED
+    print("Identifying Trends of a Graph {}{}: {}{}".format(Fore.YELLOW, timeframe, trend_color, trend))
 
 
 def get_trading_strategy():
@@ -237,26 +231,25 @@ def get_trading_strategy():
 
 def save_trading_strategy(json):
     with open("trading_strategy.csv".format(subaccount), 'w', newline='') as csvfile:
-        fieldnames = ['no', 'entry', 'tp',
-                      'recommended_amount', 'sum_actual_amount', 'sum_recommended_amount', 'usd_value', 'sum_usd', 'usd_for_collectzone', 'tp_status', 'order_buy_id', 'order_buy_datetime', 'order_sell_id', 'order_sell_datetime']
+        fieldnames = get_csv_column()
         writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
         writer.writeheader()
         writer.writerows(json)
 
 
-def get_min_buy_limit():
+def get_min_buy_limit(price):
     return price * (100 - open_range) / 100
 
 
-def get_max_sell_limit():
+def get_max_sell_limit(price):
     return price * (100 + open_range) / 100
 
 
-def get_buy_limit_range():
+def get_buy_limit_range(price, min_buy_limit, entry_price):
     return price > entry_price and entry_price > min_buy_limit
 
 
-def get_sell_limit_range():
+def get_sell_limit_range(price, max_sell_limit, entry_price, tp_price):
     return price < tp_price and price < entry_price and tp_price < max_sell_limit
 
 
@@ -336,12 +329,11 @@ def create_buy_market_order():
     price = None
     response = exchange.create_order(pair, types, side, size,
                                      price)
-    print("BUY MARKET {} Order ID {} Created at {} Size {}".format(
+    print(Fore.BLUE + "BUY MARKET {} Order ID {} Created at {} Size {}".format(
         response['symbol'], response['id'], response['price'], response['amount']))
-    print_underline()
 
 
-def create_buy_limit_order():
+def create_buy_limit_order(buy_price, buy_size):
     # Order Parameter
     types = 'limit'
     side = 'buy'
@@ -360,10 +352,9 @@ def create_buy_limit_order():
 
     print("BUY LIMIT {} Order ID : {} Created at {} Size {}".format(
         response['symbol'], response['id'], response['price'], response['amount']))
-    print_underline()
 
 
-def create_sell_limit_order():
+def create_sell_limit_order(sell_price, sell_size):
     # Order Parameter
     types = 'limit'
     side = 'sell'
@@ -382,7 +373,6 @@ def create_sell_limit_order():
 
     print("SELL LIMIT {} Order ID : {} Created at {} Size {}".format(
         response['symbol'], response['id'], response['price'], response['amount']))
-    print_underline()
 
 
 def cancel_order(order_id):
@@ -395,67 +385,184 @@ def multiplier(volatility):
     return (volatility / 100.0 + 1)
 
 
-def handle_fills_message(message):
-    print_underline()
-
-
 # Define WebSocket callback functions
+
+ws = None
+subscriptions = []
+fills = []
+orders = []
+tickers = defaultdict(dict)
+
+ws_connected = False
+logged_in = False
+handling_ws = False
+
+handling_main = False
+
+
+def send_json(message):
+    ws.send(json.dumps(message))
+
+
+def login():
+    global logged_in
+    ts = int(time.time() * 1000)
+    send_json({
+        'op': 'login',
+        'args': {
+            'key': api_key,
+            'sign': hmac.new(
+                api_secret.encode(), f'{ts}websocket_login'.encode(), 'sha256').hexdigest(),
+            'time': ts,
+            'subaccount': subaccount
+        }})
+    logged_in = True
+    print(Fore.GREEN + 'Logged in WebSocket')
+
+
+def subscribe(subscription):
+    send_json({'op': 'subscribe', **subscription})
+    subscriptions.append(subscription)
+
+
+def unsubscribe(ws, subscription):
+    send_json({'op': 'unsubscribe', **subscription})
+    while subscription in subscriptions:
+        subscriptions.remove(subscription)
+
+
+def do_trading():
+    global handling_ws
+    try:
+        if handling_main == False:
+            handling_ws = True
+            # Get Last Price
+            price = get_price()
+            if price < upper and price > lower:
+                trend = identify_trend()
+                if trend == 'Uptrend':
+                    # Get Last Price Again
+                    price = get_price()
+
+                    # Create SELL LIMIT
+                    trading_strategy = get_trading_strategy()
+                    max_sell_limit = get_max_sell_limit(price)
+
+                    for row in reversed(trading_strategy):
+                        order_sell_id = row['order_sell_id']
+                        entry_price = float(row['entry'])
+                        tp_price = float(row['tp'])
+                        tp_status = row['tp_status'] == 'True'
+                        recommended_amount = float(row['recommended_amount'])
+
+                        sell_limit_range = get_sell_limit_range(price, max_sell_limit, entry_price, tp_price)
+                        if sell_limit_range:
+                            # Use [and] condition for prevent create repeat orders
+                            pending_sell_price = get_pending_sell_price()
+                            pending_sell_id = get_pending_sell_id()
+
+                            if tp_price not in pending_sell_price and order_sell_id not in pending_sell_id and tp_status == True:
+                                sell_price = tp_price
+                                sell_size = recommended_amount
+                                create_sell_limit_order(sell_price, sell_size)
+
+                    # Create BUY LIMIT
+                    trading_strategy = get_trading_strategy()
+                    min_buy_limit = get_min_buy_limit(price)
+
+                    for row in trading_strategy:
+                        order_buy_id = row['order_buy_id']
+                        entry_price = float(row['entry'])
+                        recommended_amount = float(row['recommended_amount'])
+
+                        buy_limit_range = get_buy_limit_range(price, min_buy_limit, entry_price)
+                        if buy_limit_range:
+                            # Use [and] condition for prevent create repeat orders
+                            pending_buy_price = get_pending_buy_price()
+                            pending_buy_id = get_pending_buy_id()
+
+                            if entry_price not in pending_buy_price and order_buy_id not in pending_buy_id:
+                                buy_price = entry_price
+                                buy_size = recommended_amount
+                                create_buy_limit_order(buy_price, buy_size)
+
+                    # Clear order not in sell limit rp statement
+                    pending_sell = get_pending_sell()
+                    pending_sell_id = get_pending_sell_id()
+                    for pending_order in pending_sell:
+                        if pending_order['id'] not in pending_sell_id:
+                            cancel_order(pending_order['id'])
+
+                    # Clear order not in buy limit rp statement
+                    pending_buy = get_pending_buy()
+                    pending_buy_id = get_buy_limit_id()
+                    for pending_order in pending_buy:
+                        if pending_order['id'] not in pending_buy_id:
+                            cancel_order(pending_order['id'])
+                else:
+                    # Open only SELL LIMIT of bought order
+                    print("Open only sell limit of bought order")
+
+                    # Clear all of BUY LIMIT orders
+                    pending_buy = get_pending_buy()
+                    for pending_order in pending_buy:
+                        cancel_order(pending_order['id'])
+            elif price > upper:
+                print("Out of trading zone")
+                print("Price more than {}".format(str(upper)))
+            else:
+                print("Out of trading zone")
+                print("Price lower than {}".format(str(lower)))
+
+            handling_ws = False        
+    except Exception as e:
+        print(Fore.RED + 'Error Thread : {}'.format(str(e)))
+
+
+def handle_fills_message(message):
+    if message['data']['type'] == 'limit' and message['data']['status'] == 'closed':
+        do_trading()
+
+
 def ws_message(ws, raw_message):
-    global is_connect, handling_ws
-    is_connect = True
-    handling_ws = True
-    
     message = json.loads(raw_message)
     message_type = message['type']
     channel = message['channel']
 
     if message_type in {'subscribed', 'unsubscribed'}:
         return
-    if channel == 'fills':
+    if channel == 'orders':
         handle_fills_message(message)
 
 
 def ws_open(ws):
-    ts = int(time.time() * 1000)
-    signature = hmac.new(api_secret.encode(),
-                         f'{ts}websocket_login'.encode(), 'sha256').hexdigest()
-    auth = {
-        'op': 'login',
-        'args': {
-            'key': api_key,
-            'sign': signature,
-            'time': ts,
-            'subaccount': subaccount
-        }
-    }
-    ticker = {
-        "op": "subscribe",
-        "channel": "ticker",
-        "market": pair_lst[0]
-    }
-    ws.send(json.dumps(auth))
-    ws.send('{"op": "subscribe", "channel": "orders"}')
-    ws.send('{"op": "subscribe", "channel": "fills"}')
-    ws.send(json.dumps(ticker))
-    print('Listening on Websocket ......')
+    global ws_connected
+    ws_connected = True
+
+    login()
+
+    subscribe({'channel': 'fills'})
+    subscribe({'channel': 'orders'})
+
+    print(Fore.GREEN + 'Listening on WebSocket ......')
     print_underline()
 
 
 def ws_close(ws):
-    global is_connect, last_price
-    is_connect = False
-    last_price = None
-    print('Websocket connection is closed.')
+    global ws_connected, logged_in
+    ws_connected = False
+    logged_in = False
+    print('WebSocket connection is closed.')
 
 
 def ws_error(ws, error):
-    global is_connect, last_price
-    is_connect = False
-    last_price = None
-    print(error)
+    global ws_connected, logged_in
+    ws_connected = False
+    logged_in = False
 
 
 def ws_thread(*args):
+    global ws
     ws = websocket.WebSocketApp(
         'wss://ftx.com/ws/',
         on_open=ws_open,
@@ -463,182 +570,191 @@ def ws_thread(*args):
         on_close=ws_close,
         on_error=ws_error
     )
-    while ws.run_forever():
+    while ws.run_forever(ping_interval=15, ping_timeout=10):
         pass
 
 
 # Start a new thread for the WebSocket interface
+
 _thread.start_new_thread(ws_thread, ())
+# try:
+#     _thread.start_new_thread(ws_thread, ())
+# except RuntimeError as e:
+#     print(e)
 
 
 # Main Loop
-while True and handling_ws == False:
-    handling_main = True
+while True:
     try:
-        wallet = get_wallet_details()
-        cash = get_cash()
-        Time = get_time()
+        if handling_ws == False:
+            handling_main = True
 
-        asset_name = token_name_lst[0]
-        pair = pair_lst[0]
-
-        print_underline()
-        print('Date Time : {}'.format(Time))
-        print('Subaccount : {}'.format(subaccount))
-        print('Your Remaining Balance : {}'.format(cash))
-        print('Checking Your Asset')
-
-        total_asset = 0
-        asset_amount = None
-
-        # get port value & asset amount
-        for item in wallet:
-            if item['coin'] == asset_name:
-                asset_amount = float(item['total'])
-            asset_value = round(float(item['usdValue']), 2)
-            total_asset += asset_value
-
-        print('Your Total Asset Value is : {}'.format(total_asset))
-        print_underline()
-
-        # Get Last Price
-        price = get_price()
-
-        if price < upper and price > lower:
-            trend = identify_trend()
-            print("Identifying Trends of a Graph : {}".format(trend))
-
-            if trend == 'UPTREND':
-                print('Entering Trading Loop')
-                print_underline()
-
-                wallet = get_wallet_details()
-                price = get_price()
-                asset_in_wallet = [item['coin'] for item in wallet]
-                min_size = get_minimum_size()
-
-                sum_recommended_amount = 0.0
-
-                trading_strategy = get_trading_strategy()
-                for row in trading_strategy:
-                    entry_price = float(row['entry'])
-                    tp_price = float(row['tp'])
-                    if price < entry_price:
-                        sum_recommended_amount += float(
-                            row['recommended_amount'])
-
-                asset_diff = sum_recommended_amount - asset_amount
-
-                print('Calculated {} {}, {}/{} {}'.format(asset_diff,
-                      asset_name, asset_amount, sum_recommended_amount, asset_name))
-
-                if asset_name not in asset_in_wallet or asset_diff >= min_size:
-                    print('{} is Missing or Not Enough'.format(asset_name))
-                    print_underline()
-
-                    # Trade history Checking
-                    # print('Validating Trading History')
-                    # update_trade_log(pair)
-
-                    # Innitial asset BUY params
-                    min_trade_value = get_min_trade_value()
-                    cash = get_cash()
-
-                    # Create BUY params
-                    buy_size = sum_recommended_amount - asset_amount
-
-                    # Get Last Price
-                    price = get_price()
-                    print('{} Price is : {}$'.format(asset_name, price))
-
-                    if cash > min_trade_value and buy_size > min_size:
-                        print('Buying {} {} '.format(buy_size, asset_name))
-                        # create_buy_market_order()
-                        print_underline()
-                    else:
-                        print("Not Enough Balance to buy {}".format(asset_name))
-                        print(
-                            'Your Cash is {} // Minimum Trade Value is {}'.format(cash, min_trade_value))
-                else:
-                    print('{} is Already in Wallet'.format(asset_name))
-                    print_underline()
-
-                # Get Last Price Again
-                price = get_price()
-
-                # Create SELL LIMIT
-                trading_strategy = get_trading_strategy()
-                max_sell_limit = get_max_sell_limit()
-
-                for row in reversed(trading_strategy):
-                    order_sell_id = row['order_sell_id']
-                    entry_price = float(row['entry'])
-                    tp_price = float(row['tp'])
-                    tp_status = row['tp_status'] == 'True'
-                    recommended_amount = float(row['recommended_amount'])
-
-                    sell_limit_range = get_sell_limit_range()
-                    if sell_limit_range:
-                        # Use [and] condition for prevent create repeat orders
-                        pending_sell_price = get_pending_sell_price()
-                        pending_sell_id = get_pending_sell_id()
-
-                        if tp_price not in pending_sell_price and order_sell_id not in pending_sell_id and tp_status == True:
-                            sell_price = tp_price
-                            sell_size = recommended_amount
-                            create_sell_limit_order()
-
-                # Create BUY LIMIT
-                trading_strategy = get_trading_strategy()
-                min_buy_limit = get_min_buy_limit()
-
-                for row in trading_strategy:
-                    order_buy_id = row['order_buy_id']
-                    entry_price = float(row['entry'])
-                    recommended_amount = float(row['recommended_amount'])
-
-                    buy_limit_range = get_buy_limit_range()
-                    if buy_limit_range:
-                        # Use [and] condition for prevent create repeat orders
-                        pending_buy_price = get_pending_buy_price()
-                        pending_buy_id = get_pending_buy_id()
-
-                        if entry_price not in pending_buy_price and order_buy_id not in pending_buy_id:
-                            buy_price = entry_price
-                            buy_size = recommended_amount
-                            create_buy_limit_order()
-
-                # Clear order not in sell limit rp statement
-                pending_sell = get_pending_sell()
-                pending_sell_id = get_pending_sell_id()
-                for pending_order in pending_sell:
-                    if pending_order['id'] not in pending_sell_id:
-                        cancel_order(pending_order['id'])
-
-                # Clear order not in buy limit rp statement
-                pending_buy = get_pending_buy()
-                pending_buy_id = get_buy_limit_id()
-                for pending_order in pending_buy:
-                    if pending_order['id'] not in pending_buy_id:
-                        cancel_order(pending_order['id'])
+            print_underline()
+            if ws_connected:
+                print(Fore.GREEN + 'WebSocket Status : Connected')
             else:
-                # Open only SELL LIMIT of bought order (can adjust with ATR, i think don't do)
-                print("Open only SELL LIMIT of bought order")
+                print(Fore.RED + 'WebSocket Status : Disconnected')       
+                   
+            Time = get_time()
+            wallet = get_wallet_details()
+            cash = get_cash()
+            
+            print_underline()
+           
+            print('Date Time : {}'.format(Time))
+            print('Subaccount : {}'.format(subaccount))
+            print('Your Remaining Balance : {}'.format(cash))
 
-                # Clear all of BUY LIMIT orders
-                pending_buy = get_pending_buy()
-                for pending_order in pending_buy:
-                    cancel_order(pending_order['id'])
-        elif price > upper:
-            print("Out of trading zone")
-            print("Price more than {}".format(str(upper)))
-        else:
-            print("Out of trading zone")
-            print("Price lower than {}".format(str(lower)))
+            total_asset = 0
+            asset_amount = None
 
-        handling_main = False
-        time.sleep(5)
+            # get port value & asset amount
+            for item in wallet:
+                if item['coin'] == asset_name:
+                    asset_amount = float(item['total'])
+                asset_value = round(float(item['usdValue']), 2)
+                total_asset += asset_value
+
+            print('Your Total Asset Value is : {}'.format(total_asset))
+            print_underline()
+
+            # Get Last Price
+            price = get_price()
+
+            if price < upper and price > lower:
+
+                trend = identify_trend()
+                print_trend()
+
+                if trend == 'Uptrend':
+                    wallet = get_wallet_details()
+                    price = get_price()
+                    asset_in_wallet = [item['coin'] for item in wallet]
+                    min_size = get_minimum_size()
+
+                    sum_recommended_amount = 0.0
+
+                    trading_strategy = get_trading_strategy()
+                    for row in trading_strategy:
+                        entry_price = float(row['entry'])
+                        tp_price = float(row['tp'])
+                        if price < entry_price:
+                            sum_recommended_amount += float(
+                                row['recommended_amount'])
+
+                    asset_diff = sum_recommended_amount - asset_amount
+
+                    print('Calculated {} {}, {}/{} {}'.format(asset_diff,
+                                                              asset_name, asset_amount, sum_recommended_amount, asset_name))
+
+                    if asset_name not in asset_in_wallet or asset_diff >= min_size:
+                        print('{} is Missing or Not Enough'.format(asset_name))
+                        print_underline()
+
+                        # Trade history Checking
+                        # print('Validating Trading History')
+                        # update_trade_log(pair)
+
+                        # Innitial asset BUY params
+                        min_trade_value = get_min_trade_value()
+                        cash = get_cash()
+
+                        # Create BUY params
+                        buy_size = sum_recommended_amount - asset_amount
+
+                        # Get Last Price
+                        price = get_price()
+                        print('{} Price is : {}$'.format(asset_name, price))
+
+                        if cash > min_trade_value and buy_size > min_size:
+                            print('Buying {} {} '.format(buy_size, asset_name))
+                            # create_buy_market_order()
+                            print_underline()
+                        else:
+                            print("Not Enough Balance to buy {}".format(asset_name))
+                            print(
+                                'Your Cash is {} // Minimum Trade Value is {}'.format(cash, min_trade_value))
+                    else:
+                        print('{} is Already in Wallet'.format(asset_name))
+                        print_underline()
+
+                    # Get Last Price Again
+                    price = get_price()
+
+                    # Create SELL LIMIT
+                    trading_strategy = get_trading_strategy()
+                    max_sell_limit = get_max_sell_limit(price)
+
+                    for row in reversed(trading_strategy):
+                        order_sell_id = row['order_sell_id']
+                        entry_price = float(row['entry'])
+                        tp_price = float(row['tp'])
+                        tp_status = row['tp_status'] == 'True'
+                        recommended_amount = float(row['recommended_amount'])
+
+                        sell_limit_range = get_sell_limit_range(price, max_sell_limit, entry_price, tp_price)
+                        if sell_limit_range:
+                            # Use [and] condition for prevent create repeat orders
+                            pending_sell_price = get_pending_sell_price()
+                            pending_sell_id = get_pending_sell_id()
+
+                            if tp_price not in pending_sell_price and order_sell_id not in pending_sell_id and tp_status == True:
+                                sell_price = tp_price
+                                sell_size = recommended_amount
+                                create_sell_limit_order(sell_price, sell_size)
+
+                    # Create BUY LIMIT
+                    trading_strategy = get_trading_strategy()
+                    min_buy_limit = get_min_buy_limit(price)
+
+                    for row in trading_strategy:
+                        order_buy_id = row['order_buy_id']
+                        entry_price = float(row['entry'])
+                        recommended_amount = float(row['recommended_amount'])
+
+                        buy_limit_range = get_buy_limit_range(price, min_buy_limit, entry_price)
+                        if buy_limit_range:
+                            # Use [and] condition for prevent create repeat orders
+                            pending_buy_price = get_pending_buy_price()
+                            pending_buy_id = get_pending_buy_id()
+
+                            if entry_price not in pending_buy_price and order_buy_id not in pending_buy_id:
+                                buy_price = entry_price
+                                buy_size = recommended_amount
+                                create_buy_limit_order(buy_price, buy_size)
+
+                    # Clear order not in sell limit rp statement
+                    pending_sell = get_pending_sell()
+                    pending_sell_id = get_pending_sell_id()
+                    for pending_order in pending_sell:
+                        if pending_order['id'] not in pending_sell_id:
+                            cancel_order(pending_order['id'])
+
+                    # Clear order not in buy limit rp statement
+                    pending_buy = get_pending_buy()
+                    pending_buy_id = get_buy_limit_id()
+                    for pending_order in pending_buy:
+                        if pending_order['id'] not in pending_buy_id:
+                            cancel_order(pending_order['id'])
+                else:
+                    # Open only SELL LIMIT of bought order
+                    print("Open only sell limit of bought order")
+
+                    # Clear all of BUY LIMIT orders
+                    pending_buy = get_pending_buy()
+                    for pending_order in pending_buy:
+                        cancel_order(pending_order['id'])
+            elif price > upper:
+                print("Out of trading zone")
+                print("Price more than {}".format(str(upper)))
+            else:
+                print("Out of trading zone")
+                print("Price lower than {}".format(str(lower)))
+
+            handling_main = False
+        print('Wait for an event to be triggered')
+        time.sleep(loop_time)
 
     except Exception as e:
-        print('Error : {}'.format(str(e)))
+        print(Fore.RED + 'Error Main : {}'.format(str(e)))
         time.sleep(10)
