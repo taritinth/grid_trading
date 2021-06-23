@@ -90,8 +90,9 @@ def create_zone():
     # print(json.dumps(data, indent=4))
 
     table = Texttable()
-    table.set_cols_width([12 for i in fieldnames])
+    table.set_cols_width([len(str(i)) + 5 for i in data[1]])
     table.set_cols_dtype(['t' for i in fieldnames])
+    table.set_cols_align(['c' for i in fieldnames])
     table.add_rows(data)
     print(table.draw())
     print("------------------------------")
