@@ -1,6 +1,8 @@
+import json
 import math
 import pandas as pd
 import csv
+from texttable import Texttable
 
 upper = 4  # EDIT
 lower = 0.1  # EDIT
@@ -19,14 +21,14 @@ maker_fee = 0.02  # EDIT %
 
 def get_csv_column():
     column = ['no', 'entry', 'tp',
-              'recommended_amount', 'sum_actual_amount', 'sum_recommended_amount', 'usd_value', 'sum_usd', 'usd_for_collectzone', 'tp_status', 'order_buy_id', 'order_buy_datetime', 'order_sell_id', 'order_sell_datetime']
+              'recommended_amount', 'sum_actual_amount', 'sum_recommended_amount', 'usd_value', 'sum_usd', 'usd_for_collectzone', 'tp_status']
     return column
 
 
 def create_zone():
     fieldnames = get_csv_column()
-    trading_strategy = pd.DataFrame(columns=fieldnames)
-    trading_strategy.to_csv("trading_strategy.csv", index=False)
+    # trading_strategy = pd.DataFrame(columns=fieldnames)
+    # trading_strategy.to_csv("trading_strategy.csv", index=False)
 
     data = []
     data.append(fieldnames)
@@ -75,20 +77,26 @@ def create_zone():
             item.append(False) if count_zone == 1 else item.append(
                 True)
 
-            item.append("")  # buy_id
-            item.append("")  # buy_datetime
-
-            item.append("")  # sell_id
-            item.append("")  # sell_datetime
-
             data.append(item)  # add row
 
-            with open("trading_strategy.csv", "a+", newline='') as fp:
-                wr = csv.writer(fp, dialect='excel')
-                wr.writerow(item)
+            # with open("trading_strategy.csv", "a+", newline='') as fp:
+            #     wr = csv.writer(fp, dialect='excel')
+            #     wr.writerow(item)
         else:
             break
-    print("Database has been created")
+    
+    data.append(fieldnames)
+    
+    # print(json.dumps(data, indent=4))
+
+    table = Texttable()
+    table.set_cols_width([12 for i in fieldnames])
+    table.set_cols_dtype(['t' for i in fieldnames])
+    table.add_rows(data)
+    print(table.draw())
+    print("------------------------------")
+    print('COUNT ZONE: %d' % count_zone)
+    print("------------------------------")
 
 
 create_zone()
