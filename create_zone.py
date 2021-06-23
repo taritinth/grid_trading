@@ -94,6 +94,7 @@ def create_zone():
     table.set_cols_dtype(['t' for i in fieldnames])
     table.set_cols_align(['c' for i in fieldnames])
     table.add_rows(data)
+    
     print(table.draw())
     print("------------------------------")
     print('COUNT ZONE: %d' % count_zone)
