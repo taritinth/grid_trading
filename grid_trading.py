@@ -132,7 +132,7 @@ def get_cash():
 # Database Function Part
 def get_csv_column():
     column = ['no', 'entry', 'tp',
-              'recommended_amount', 'sum_actual_amount', 'sum_recommended_amount', 'usd_value', 'sum_usd', 'usd_for_collectzone', 'tp_status', 'order_buy_id', 'order_buy_datetime', 'order_sell_id', 'order_sell_datetime']
+              'recommended_amount', 'sum_actual_amount', 'sum_recommended_amount', 'usd_value', 'sum_usd', 'usd_for_collectzone', 'tp_status', 'order_buy_id', 'order_buy_avg_price', 'order_buy_datetime', 'order_sell_id', 'order_sell_datetime']
     return column
 
 
@@ -196,6 +196,7 @@ def check_database():
                     True)
 
                 item.append("")  # buy_id
+                item.append("")  # buy_avg_price
                 item.append("")  # buy_datetime
 
                 item.append("")  # sell_id
@@ -385,7 +386,6 @@ def create_sell_limit_order(sell_price, sell_size):
 
 
 def cancel_order(order_id):
-    order_id = order_id
     exchange.cancel_order(order_id)
     print("Order ID : {} Successfully Canceled".format(order_id))
 
@@ -584,16 +584,16 @@ def trading_algorithm(mode):
 
                 # Clear sell limit order not in trading strategy
                 pending_sell = get_pending_sell()
-                pending_sell_id = get_pending_sell_id()
+                sell_limit_id = get_sell_limit_id()
                 for pending_order in pending_sell:
-                    if pending_order['id'] not in pending_sell_id:
+                    if pending_order['id'] not in sell_limit_id:
                         cancel_order(pending_order['id'])
 
                 # Clear buy limit order not in trading strategy
                 pending_buy = get_pending_buy()
-                pending_buy_id = get_buy_limit_id()
+                buy_limit_id = get_buy_limit_id()
                 for pending_order in pending_buy:
-                    if pending_order['id'] not in pending_buy_id:
+                    if pending_order['id'] not in buy_limit_id:
                         cancel_order(pending_order['id'])
             else:
                 # Open only SELL LIMIT of bought order
