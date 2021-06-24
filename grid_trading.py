@@ -582,14 +582,14 @@ def trading_algorithm(mode):
                             buy_size = recommended_amount
                             create_buy_limit_order(buy_price, buy_size)
 
-                # Clear order not in sell limit rp statement
+                # Clear order not in sell limit trading strategy
                 pending_sell = get_pending_sell()
                 pending_sell_id = get_pending_sell_id()
                 for pending_order in pending_sell:
                     if pending_order['id'] not in pending_sell_id:
                         cancel_order(pending_order['id'])
 
-                # Clear order not in buy limit rp statement
+                # Clear order not in buy limit trading strategy
                 pending_buy = get_pending_buy()
                 pending_buy_id = get_buy_limit_id()
                 for pending_order in pending_buy:
