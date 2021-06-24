@@ -4,20 +4,30 @@ import pandas as pd
 import csv
 from texttable import Texttable
 
-upper = 4  # EDIT
-lower = 0.1  # EDIT
-digits = [1, 10, 100, 1000, 10000, 100000]  # DO NOT EDIT
+# Initial Variables
+file_name = 'config.txt'
+file_obj = open(file_name)
+params = {}
+for line in file_obj:
+    line = line.strip()
+    if not line.startswith("#"):
+        key_value = line.split("=")
+        if len(key_value) == 2:
+            params[key_value[0].strip()] = key_value[1].strip()
 
-min_usd = 4  # EDIT -> minimum USD for buy with min_size at upper
-min_trade_size = 1  # EDIT
-min_trade_size_decimal = 0  # EDIT -> number of size decimal places
+upper = float(params['upper'])
+lower = float(params['lower'])
+digits = [1, 10, 100, 1000, 10000, 100000, 1000000, 10000000, 100000000, 1000000000, 10000000000]  # DO NOT EDIT
 
-# check if priceIncrement not is 0.xxx1, 0.x1, 1, you must round asset price
-price_decimal = 4  # EDIT -> number of price decimal places
+min_usd = float(params['min_usd'])
+min_trade_size = float(params['min_trade_size'])
+min_trade_size_decimal = int(params['min_trade_size_decimal'])
 
-gap_entry = 8  # EDIT %
-gap_tp = 9  # EDIT %
-maker_fee = 0.02  # EDIT %
+price_decimal = int(params['price_decimal'])
+
+gap_entry = float(params['gap_entry'])
+gap_tp = float(params['gap_tp'])
+maker_fee = float(params['maker_fee'])
 
 def get_csv_column():
     column = ['no', 'entry', 'tp',
@@ -49,6 +59,9 @@ def create_zone():
 
             recommended_amount = math.floor(
                 (min_usd / entry_price) * digits[min_trade_size_decimal]) / digits[min_trade_size_decimal]
+
+            # if(recommended_amount <= min_trade_size):
+            #     recommended_amount += min_trade_size
 
             usd_value = entry_price * recommended_amount
             sum_amount += recommended_amount - \
@@ -94,7 +107,7 @@ def create_zone():
     table.set_cols_dtype(['t' for i in fieldnames])
     table.set_cols_align(['c' for i in fieldnames])
     table.add_rows(data)
-    
+
     print(table.draw())
     print("------------------------------")
     print('COUNT ZONE: %d' % count_zone)

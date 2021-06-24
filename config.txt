@@ -1,0 +1,22 @@
+api_key = 8eoZURlwL28c7T96cl2qzTT2HMjFZ2gl_jahaJGq
+api_secret = j7i-8jNXGHG5s7jq_GxC2fMLARERmhigi0aiCgys
+subaccount = AAVE_GT
+
+asset_name = ALPHA
+pair = ALPHA/USD
+
+timeframe = 15m
+upper = 4
+lower = 0.1
+
+min_usd = 4
+min_trade_size = 1
+min_trade_size_decimal = 0
+price_decimal = 4
+
+gap_entry = 8
+gap_tp = 9
+maker_fee = 0.02
+
+open_range = 30
+loop_time = 60
